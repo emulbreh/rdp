@@ -1,4 +1,6 @@
 import re
+import abc
+from collections import deque
 
 from rdp.ast import Node
 from rdp.tokenizer import Tokenizer
@@ -24,18 +26,19 @@ def drop(symbol):
     return symbol
 
 
-class Symbol(object):
+class Symbol(metaclass=abc.ABCMeta):
     def __init__(self):
         self.name = ''
         self.flatten = False
         self.transform = None
         self.drop = False
 
+    @abc.abstractmethod
     def __call__(self, parser):
         assert False
-        
+
     def __iter__(self):
-        yield self
+        yield from ()
 
     def __str__(self):
         name = self.name if self.name else 'anonymous'
@@ -46,15 +49,26 @@ class Symbol(object):
 
     def __radd__(self, other):
         return to_symbol(other) + self
-        
+
     def __or__(self, other):
         return OneOf([self, to_symbol(other)])
-        
+
     def __ror__(self, other):
         return to_symbol(other) | self
-        
+
     def __rshift__(self, func):
         self.transform = func
+
+    def iter(self):
+        visited = set()
+        next_symbols = deque([self])
+        while next_symbols:
+            next_symbol = next_symbols.popleft()
+            if next_symbol in visited:
+                continue
+            yield next_symbol
+            visited.add(next_symbol)
+            next_symbols.extend(next_symbol)
 
 
 class Terminal(Symbol):
@@ -62,7 +76,7 @@ class Terminal(Symbol):
         super(Terminal, self).__init__()
         self.lexeme = lexeme
         self.priority = -1
-    
+
     @property
     def pattern(self):
         return re.escape(self.lexeme)
@@ -110,17 +124,15 @@ class NonTerminal(Symbol):
     def __init__(self, symbols):
         super(NonTerminal, self).__init__()
         self.symbols = symbols
-        
+
     def __iter__(self):
-        yield from super().__iter__()
-        for symbol in self.symbols:
-            yield from iter(symbol)
+        yield from self.symbols
 
     def __repr__(self):
         name = '{0} = '.format(self.name) if self.name else ''
         return '<{0} {1}{2}>'.format(
-            self.__class__.__name__, 
-            name, 
+            self.__class__.__name__,
+            name,
             self.repr_sep.join(repr(symbol) for symbol in self.symbols),
         )
 
@@ -139,7 +151,7 @@ class OneOf(NonTerminal):
             except ParseError as e:
                 continue
         raise parser.error('expected one of: {0}', ', '.join(repr(symbol) for symbol in self.symbols))
-        
+
     def __or__(self, other):
         return self.__class__(self.symbols + [to_symbol(other)])
 
@@ -190,35 +202,71 @@ class Repeat(NonTerminal):
         yield node
 
 
-class GrammarMeta(type):
-    def __new__(cls, name, bases, attrs):
-        TERMINALS = attrs.setdefault('TERMINALS', [])
-        SYMBOLS = attrs.setdefault('SYMBOLS', set())
-
-        for priority, terminal in enumerate(reversed(TERMINALS)):
-            terminal.priority = priority
-
-        for attr, value in attrs.copy().items():
-            if not isinstance(value, Symbol):
-                continue
-            value.name = attr
-            for symbol in value:
-                SYMBOLS.add(symbol)
-                if isinstance(symbol, Terminal) and symbol not in TERMINALS and not symbol == epsilon:
-                    TERMINALS.append(symbol)
-
-        cls = super(GrammarMeta, cls).__new__(cls, name, bases, attrs)
-        if cls.__module__ != __name__ and not hasattr(cls, 'TOKENIZER'):
-            setattr(cls, 'TOKENIZER', Tokenizer(TERMINALS))
-        return cls
-
-
-class Grammar(Symbol, metaclass=GrammarMeta):
-    def __iter__(self):
-        yield self
-        yield from iter(self.START)
+class SymbolProxy(Symbol):
+    def __init__(self, symbol):
+        self._symbol = symbol
 
     def __call__(self, parser):
-        node = yield self.START
-        yield node
+        yield from self._symbol(parser)
 
+    def __iter__(self):
+        yield from self._symbol
+
+    def __str__(self):
+        return '<SymbolProxy {0}>'.format(repr(self._symbol))
+
+
+class GrammarBuilder(object):
+    def __init__(self):
+        self._symbols = {}
+        self._start = None
+        self._forward_declarations = {}
+
+    def __getattr__(self, name):
+        try:
+            return self._symbols[name]
+        except KeyError:
+            symbol = SymbolProxy(None)
+            self._symbols[name] = symbol
+            self._forward_declarations[name] = symbol
+            return symbol
+
+    def __setattr__(self, name, symbol):
+        if name.startswith('_'):
+            return super().__setattr__(name, symbol)
+        symbol = to_symbol(symbol)
+        try:
+            self._forward_declarations.pop(name)._symbol = symbol
+            self._symbols[name] = symbol
+        except KeyError:
+            pass
+        symbol.name = name
+        self._symbols[name] = symbol
+
+    def __call__(self, start=None, terminals=None, ignore=()):
+        return Grammar(start, 
+            symbols=self._symbols.values(),
+            ignore=ignore,
+        )
+
+
+class Grammar(Symbol):
+    def __init__(self, start, terminals=None, symbols=None, ignore=()):
+        self.start = start
+        self.terminals = terminals if terminals is not None else []
+        self.symbols = set(symbols) if symbols else set()
+        self.symbols.add(start)
+
+        for symbol in self.symbols.copy():
+            for s in symbol.iter():
+                self.symbols.add(s)
+                if isinstance(s, Terminal) and s not in self.terminals and not s == epsilon:
+                    self.terminals.append(s)
+
+        self.tokenizer = Tokenizer(self.terminals, ignore=ignore)
+
+    def __iter__(self):
+        yield from self.start
+
+    def __call__(self, parser):
+        yield from self.start(parser)

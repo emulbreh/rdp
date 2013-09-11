@@ -1,10 +1,10 @@
-from unittest import TestCase
+import unittest
 
-from rdp.grammar import Grammar, Terminal, Repeat, Regexp, flatten, drop, epsilon
+from rdp.grammar import Grammar, GrammarBuilder, Terminal, Repeat, Regexp, flatten, drop, epsilon
 from rdp.parser import Parser
 
 
-class ParserTestCase(TestCase):
+class ParserTestCase(unittest.TestCase):
     def assert_tree_eq(self, node, spec):
         if isinstance(spec, str):
             self.assertEqual(node.value.lexeme, spec)
@@ -18,21 +18,22 @@ class ParserTestCase(TestCase):
 class RepeatParserTest(ParserTestCase):
     def setUp(self):
         super().setUp()
-
-        class TestGrammar(Grammar):
-            ab = Terminal('A') | Terminal('B')
-            START = Repeat(ab, separator=',')
-
-        self.grammar = TestGrammar()
+        
+        g = GrammarBuilder()
+        g.ab = Terminal('A') | Terminal('B')
+        g.seq = Repeat(g.ab, separator=',')
+        self.grammar = g(start=g.seq)
 
     def test_one_item(self):
         self.assert_tree_eq(Parser(self.grammar, 'A').run(), (
-            'START', [('ab', ['A'])]
+            'seq', [
+                ('ab', ['A']),
+            ]
         ))
 
     def test_several_items(self):
         self.assert_tree_eq(Parser(self.grammar, 'A,A,B,B').run(), (
-            'START', [
+            'seq', [
                 ('ab', ['A']),
                 ',',
                 ('ab', ['A']),
@@ -48,40 +49,39 @@ class JsonParserTest(ParserTestCase):
     def setUp(self):
         super().setUp()
 
-        class JsonGrammar(Grammar):
-            number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?')
-            string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"')
-            expr = flatten(number_literal | string_literal)
-            array = drop('[') + flatten(Repeat(expr, separator=drop(','))) + drop(']')
-            object_ = drop('{') + flatten(Repeat(flatten(string_literal + drop(':') + expr), separator=',')) + drop('}')
-            expr |= flatten(array | object_)
-            START = expr | Terminal('__symbol_copy_bug__')
+        g = GrammarBuilder()
+        g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?')
+        g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"')
+        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']')
+        g.object_ = drop('{') + flatten(Repeat(flatten(g.string_literal + drop(':') + g.expr), separator=',')) + drop('}')
+        g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
+        g.whitespace = Regexp('\\s+')
 
-        self.grammar = JsonGrammar()
+        self.grammar = g(start=g.expr, ignore=g.whitespace)
 
     def test_object(self):
         self.assert_tree_eq(Parser(self.grammar, '{"foo":"bar"}').run(), (
-            'START', [
+            'expr', [
                 ('object_', ['"foo"', '"bar"']),
             ]
         ))
 
     def test_array(self):
         self.assert_tree_eq(Parser(self.grammar, '["foo","bar"]').run(), (
-            'START', [
+            'expr', [
                 ('array', ['"foo"', '"bar"']),
             ]
         ))
 
         self.assert_tree_eq(Parser(self.grammar, '["foo","bar"]').run(), (
-            'START', [
+            'expr', [
                 ('array', ['"foo"', '"bar"']),
             ]
         ))
 
     def test_numbers(self):
         self.assert_tree_eq(Parser(self.grammar, '[0,1,42,3.14,-1,-23.,0.001,1e10,13.5e-12]').run(), (
-            'START', [
+            'expr', [
                 ('array', ['0', '1', '42', '3.14', '-1', '-23.', '0.001', '1e10', '13.5e-12']),
             ]
         ))

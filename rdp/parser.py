@@ -44,7 +44,7 @@ class Parser(object):
         self.grammar = grammar
         self.source = source
         self.stack = []
-        self.tokens = RandomAccessGenerator(grammar.TOKENIZER.tokenize(source))
+        self.tokens = RandomAccessGenerator(grammar.tokenizer.tokenize(source))
         self._cache = {}
         
     def error(self, msg, *args, **kwargs):
@@ -71,7 +71,7 @@ class Parser(object):
         return next(entry.generator)
         
     def run(self):
-        func, arg = self.push, self.grammar.START
+        func, arg = self.push, self.grammar.start
         while True:
             try:
                 arg = func(arg)
