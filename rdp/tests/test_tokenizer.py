@@ -2,7 +2,7 @@ import unittest
 import textwrap
 import re
 
-from rdp import GrammarBuilder, flatten, drop, epsilon, Repeat, Terminal, Regexp, Parser, epsilon, Optional
+from rdp import GrammarBuilder, flatten, drop, epsilon, Repeat, Terminal, Regexp, Parser, epsilon, Optional, ignore
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
 from rdp.tokenizer import Token
@@ -12,33 +12,47 @@ INDENT = Terminal('x', name='INDENT')
 DEDENT = Terminal('x', name='DEDENT')
 
 
+_space_re = re.compile(r'^[ \t]*')
+
+def get_indention(s, tabsize=4):
+    space = _space_re.match(s).group(0)
+    return space.count(' ') + space.count('\t') * tabsize
+
+
 class TokenizerTest(unittest.TestCase):
-    def test_default_format(self):
+    def test_indention_tokenizer(self):
 
         def tokenize(tokens):
-            indention = [0]
+            indention = []
+            last_token = None
             for token in tokens:
-                if '\n' not in token.lexeme:
+                newline_index = token.lexeme.find('\n')
+                if newline_index == -1:
                     yield token
+                    continue
+
+                before_newline, after_newline = token.split(newline_index + 1)
+                indent = get_indention(after_newline.lexeme)
+                if indention and indent == indention[-1]:
+                    yield token
+                    continue
+
+                yield before_newline
+                if not indention or indent > indention[-1]:
+                    indention.append(indent)
+                    yield Token(INDENT, "", after_newline.start)
                 else:
-                    pre, post = token.lexeme.rsplit('\n')
-                    pos = (token.end[1], 0)
-                    space = len(re.match(r'^[ ]*', post).group(0))
-                    if indention and space == indention[-1]:
-                        yield token
-                    else:
-                        yield Token(token.symbol, token.offset, pre + '\n', token.start, pos)
-                        if not indention or space > indention[-1]:
-                            indention.append(space)
-                            yield Token(INDENT, token.offset + len(pre) + 1, "", pos, pos)
-                        else:
-                            while indention[-1] > space:
-                                yield Token(DEDENT, token.offset + len(pre) + 1, "", pos, pos)
-                                indention.pop()
-                            assert indention[-1] == space, "unexpected indention level"
-                        yield Token(token.symbol, token.offset + len(pre) + 1, post, pos, token.end)
+                    while indention[-1] > indent:
+                        yield Token(DEDENT, "", after_newline.start)
+                        indention.pop()
+                    if indention[-1] != indent:
+                        raise TokenizeError("unexpected indention level")
+                yield after_newline
+                last_token = token
+
+            pos = last_token.end
             while indention:
-                yield Token(DEDENT, 0, "", (0, 0), (0, 0))
+                yield Token(DEDENT, "", pos)
                 indention.pop()
 
         g = GrammarBuilder()
@@ -46,7 +60,7 @@ class TokenizerTest(unittest.TestCase):
         g.block = INDENT + Repeat(g.expr) + DEDENT
         g.label = Regexp(r'\w+')
         g.expr = g.label + Optional(g.block)
-        grammar = g(start=g.expr, ignore=[g.whitespace], tokenize=tokenize)
+        grammar = g(start=g.expr, tokenize=[tokenize, ignore(g.whitespace)])
 
         format = GrammarFormatter()
 
@@ -61,6 +75,6 @@ class TokenizerTest(unittest.TestCase):
 
         self.assertEqual(
             [t.lexeme or t.symbol.name for t in grammar.tokenize(source)],
-            ['foo', 'INDENT', 'bar', 'baz', 'INDENT', 'boo', 'DEDENT', 'x', 'y', 'DEDENT', 'DEDENT']
+            ['foo', 'INDENT', 'bar', 'baz', 'INDENT', 'boo', 'DEDENT', 'x', 'y', 'DEDENT']
         )
 

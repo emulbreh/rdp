@@ -1,12 +1,12 @@
 
 
 class Node(object):
-    def __init__(self, symbol, value=None):
+    def __init__(self, symbol, token=None):
         self.symbol = symbol
-        self.value = value
+        self.token = token
         self.children = []
-        self.offset = value.offset if value else None
         self.parent = None
+        self.offset = self.token.start.source_offset if self.token else None
 
     def append(self, node):
         if node.symbol.drop or not node:
@@ -33,7 +33,15 @@ class Node(object):
             self.parent.remove(self)
 
     def __bool__(self):
-        return bool(self.value or self.children)
+        return bool(self.token or self.children)
+
+    def transform(self):
+        children = [child.transform() for child in self]
+        if self.symbol.transform is not None:
+            if self.token:
+                return self.symbol.transform(self.token.lexeme)
+            return self.symbol.transform(children)
+        return (self.symbol.name, children)
 
     def __len__(self):
         return len(self.children)
@@ -43,10 +51,10 @@ class Node(object):
 
     def __repr__(self):
         name = '{0}='.format(self.symbol.name) if self.symbol.name else ''
-        return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.value))
+        return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.token))
 
     def print_tree(self, indent=0):
-        print('{0}{1}, lexeme={2}'.format(4 * indent * ' ', self.symbol, repr(getattr(self.value, 'lexeme', ''))))
+        print('{0}{1} ({2})'.format(4 * indent * ' ', self.symbol.name, repr(getattr(self.token, 'lexeme', ''))))
         for child in self.children:
             child.print_tree(indent=indent + 1)
 

@@ -1,22 +1,70 @@
 import re
-from collections import namedtuple
+from functools import total_ordering
+
 from rdp.exceptions import TokenizeError
 
 
-class Token(object):
-    def __init__(self, symbol, offset, lexeme, start, end):
+@total_ordering
+class SourcePosition:
+    def __init__(self, line, line_offset, source_offset):
+        self.line = line
+        self.line_offset = line_offset
+        self.source_offset = source_offset
+
+    def advance(self, lexeme):
+        if not lexeme:
+            return self
+        line = self.line
+        length = len(lexeme)
+        new_lines = lexeme.count('\n')
+        if new_lines:
+            line += new_lines
+            line_offset = length - lexeme.rfind('\n') - 1
+        else:
+            line_offset = self.line_offset + length
+        return SourcePosition(line, line_offset, self.source_offset + length)
+
+    def __str__(self):
+        return "line {0}[{1}]".format(self.line, self.line_offset)
+
+    def __lt__(self, other):
+        return self.source_offset < other.source_offset
+
+    def __eq__(self, other):
+        return self.source_offset == other.source_offset
+
+
+START_POSITION = SourcePosition(0, 0, 0)
+
+
+class Token:
+    def __init__(self, symbol, lexeme, start):
         self.symbol = symbol
-        self.offset = offset
         self.lexeme = lexeme
         self.start = start
-        self.end = end
+
+    @property
+    def end(self):
+        return self.start.advance(self.lexeme)
+
+    def __len__(self):
+        return len(self.lexeme)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.lexeme == other
+        return super().__eq__(self, other)
+
+    def __contains__(self, s):
+        return s in self.lexeme
 
     def __repr__(self):
-        return '<Token {0} at line {1}[{2}]>'.format(
-            self.lexeme,
-            self.start[0] + 1,
-            self.start[1]
-        )
+        return '<Token {0} at {1}]>'.format(self.lexeme, self.start)
+
+    def split(self, offset):
+        a, b = self.lexeme[:offset], self.lexeme[offset:]
+        yield self.__class__(self.symbol, a, self.start)
+        yield self.__class__(self.symbol, b, self.start.advance(a))
 
 
 class Tokenizer(object):
@@ -34,29 +82,22 @@ class Tokenizer(object):
         self._re = re.compile('|'.join(patterns), re.MULTILINE)
 
     def tokenize(self, source):
-        offset = 0
-        line = 0
-        line_offset = 0
         source_len = len(source)
-        while offset < source_len:
-            match = self._re.match(source, offset)
+        pos = START_POSITION
+        while pos.source_offset < source_len:
+            match = self._re.match(source, pos.source_offset)
             if match is None:
-                raise TokenizeError('unexpected junk: {0} at line {1}, offset {2}'.format(repr(source[offset:offset + 10]), line + 1, line_offset))
-            start, end = match.span()
+                raise TokenizeError('unexpected junk: {0} at line {1}, offset {2}'.format(
+                    repr(source[pos.source_offset:pos.source_offset + 10]),
+                    pos.line + 1,
+                    pos.line_offset
+                ))
             symbol = self.terminals[match.lastgroup]
             lexeme = match.group(0)
-            start_pos = (line, start - line_offset)
-            new_lines = lexeme.count('\n')
-            if new_lines:
-                line += new_lines
-                line_offset = start + lexeme.rfind('\n')
+            start, end = match.span()
             yield Token(
                 symbol=symbol,
-                offset=start,
                 lexeme=lexeme,
-                start=start_pos,
-                end=(line, end - line_offset),
+                start=pos,
             )
-            offset = end
-        if offset != len(source):
-            raise TokenizeError('unexpected junk: {0}'.format(source[offset:]))
+            pos = pos.advance(lexeme)

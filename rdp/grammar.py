@@ -36,40 +36,48 @@ class GrammarBuilder(object):
         symbol.position = len(self._symbols)
         self._symbols[name] = symbol
 
-    def __call__(self, start=None, terminals=None, ignore=(), tokenize=None):
+    def __call__(self, start=None, terminals=None, tokenize=(), drop_terminals=False):
         if any(self._forward_declarations):
             raise InvalidGrammar('undefined symbols: {0}'.format(', '.join(self._forward_declarations.keys())))
         return Grammar(start,
             symbols=self._symbols.values(),
-            ignore=ignore,
             tokenize=tokenize,
+            drop_terminals=drop_terminals,
         )
 
 
+def ignore(*symbols):
+    def ignore_symbols(tokens):
+        for token in tokens:
+            if token.symbol not in symbols:
+                yield token
+    return ignore_symbols
+
+
 class Grammar(Symbol):
-    def __init__(self, start, terminals=None, symbols=None, ignore=(), tokenize=None):
+    def __init__(self, start, terminals=None, symbols=None, tokenize=(), drop_terminals=False):
         self.start = start
         self.terminals = terminals if terminals is not None else []
         self.symbols = set(symbols) if symbols else {start}
+        self.drop_terminals = drop_terminals
 
         for symbol in self.symbols.copy():
             for s in symbol.iter():
                 self.symbols.add(s)
                 if isinstance(s, Terminal):
+                    if s.__class__ == Terminal and s.drop is None:
+                        s.drop = self.drop_terminals
                     if s not in self.terminals and s != epsilon:
                         self.terminals.append(s)
 
-        self._tokenize = tokenize
-        self.ignore = ignore
+        self.token_transforms = tokenize
         self.tokenizer = Tokenizer(self.terminals)
 
     def tokenize(self, source):
         tokens = self.tokenizer.tokenize(source)
-        tokens = self._tokenize(tokens) if self._tokenize else tokens
-        for token in tokens:
-            if token.symbol in self.ignore:
-                continue
-            yield token
+        for t in self.token_transforms:
+            tokens = t(tokens)
+        return tokens
 
     def rules(self):
         for symbol in sorted(self.symbols, key=attrgetter('position')):

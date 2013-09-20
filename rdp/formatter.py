@@ -1,5 +1,3 @@
-from rdp.grammar import SymbolProxy
-
 
 class GrammarFormatter:
     rule_separator = '  ::=  '
@@ -33,7 +31,7 @@ class GrammarFormatter:
     def format_repeat(self, repeat):
         if repeat.separator:
             return '[{0} *({0} {1})]'.format(
-                self.format_symbol(repeat.symbol), 
+                self.format_symbol(repeat.symbol),
                 self.format_symbol(repeat.separator),
             )
         else:
@@ -53,6 +51,6 @@ class GrammarFormatter:
 
     def format_grammar(self, grammar):
         return '<grammar {0}>'.format(grammar)
-        
+
     def format_lookahead(self, lookahead):
         return '(?>{0})'.format(self.format_symbol(lookahead.symbol))

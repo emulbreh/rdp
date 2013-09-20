@@ -1,7 +1,7 @@
 import unittest
 
-from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Terminal, 
-    Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead)
+from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Terminal,
+    Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore)
 from rdp.formatter import GrammarFormatter
 
 
@@ -10,8 +10,8 @@ class ParserTestCase(unittest.TestCase):
         if isinstance(node, str):
             node = Parser(self.grammar, node).run()
         if isinstance(spec, str):
-            self.assertTrue(node.value is not None, 'expected a terminal, found {0}'.format(node))
-            self.assertEqual(node.value.lexeme, spec)
+            self.assertTrue(node.token is not None, 'expected a terminal, found {0}'.format(node))
+            self.assertEqual(node.token.lexeme, spec)
             return
         self.assertEqual(node.symbol.name, spec[0])
         self.assertEqual(len(node.children), len(spec[1]), 'child count of {0} does not match expectation'.format(node))
@@ -58,7 +58,7 @@ class RepeatWithSeparatorParserTest(ParserTestCase):
         g.ab = Terminal('A') | Terminal('B')
         g.seq = Repeat(g.ab, separator=',')
         self.grammar = g(start=g.seq)
-        
+
     def test_zero_items(self):
         self.assert_tree_eq('', ('seq', []))
         with self.assertRaises(ParseError):
@@ -164,7 +164,7 @@ class LookaheadParserTest(ParserTestCase):
         g.yx = Terminal('x') | Terminal('y')
         g.start = flatten(Lookahead('x') + g.xy) | g.yx
         self.grammar = g(start=g.start)
-    
+
     def test_lookahead(self):
         self.assert_tree_eq('x', ('start', [('xy', ['x'])]))
         self.assert_tree_eq('y', ('start', [('yx', ['y'])]))
@@ -187,12 +187,12 @@ class JsonParserTest(ParserTestCase):
         g = GrammarBuilder()
         g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?')
         g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"')
-        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']')
-        g.object_ = drop('{') + flatten(Repeat(flatten(g.string_literal + drop(':') + g.expr), separator=',')) + drop('}')
+        g.array = '[' + flatten(Repeat(g.expr, separator=drop(','))) + ']'
+        g.object_ = '{' + flatten(Repeat(flatten(g.string_literal + ':' + g.expr), separator=',')) + '}'
         g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
         g.whitespace = Regexp('\\s+')
 
-        self.grammar = g(start=g.expr, ignore=[g.whitespace])
+        self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
 
     def test_object(self):
         self.assert_tree_eq(Parser(self.grammar, '{"foo": "bar"}').run(), (
@@ -208,18 +208,41 @@ class JsonParserTest(ParserTestCase):
             ]
         ))
 
-        self.assert_tree_eq(Parser(self.grammar, '["foo", "bar"]').run(), (
-            'expr', [
-                ('array', ['"foo"', '"bar"']),
-            ]
-        ))
-
     def test_numbers(self):
         self.assert_tree_eq(Parser(self.grammar, '[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').run(), (
             'expr', [
                 ('array', ['0', '1', '42', '3.14', '-1', '-23.', '0.001', '1e10', '13.5e-12']),
             ]
         ))
+
+
+class TransformJsonParserTest(ParserTestCase):
+    def setUp(self):
+        super().setUp()
+
+        g = GrammarBuilder()
+        g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?') >> float
+        g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"') >> (lambda s: s[1:-1])
+        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']') >> list
+        g.object_ = drop('{') + flatten(Repeat(g.string_literal + drop(':') + g.expr >> tuple, separator=',')) + drop('}') >> dict
+        g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
+        g.whitespace = Regexp('\\s+')
+
+        self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)])
+
+    def test_object(self):
+        Parser(self.grammar, '{"foo": "bar"}').run().print_tree()
+        self.assertEqual(Parser(self.grammar, '{"foo": "bar"}').run().transform(), ('expr', [{'foo': 'bar'}]))
+
+    def test_array(self):
+        self.assertEqual(Parser(self.grammar, '["foo", "bar"]').run().transform(), ('expr', [['foo', 'bar']]))
+
+    def test_numbers(self):
+        self.assertEqual(
+            Parser(self.grammar, '[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').run().transform(),
+            ('expr', [[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]])
+        )
+
 
 
 class TestErrorMessages(unittest.TestCase):
@@ -231,16 +254,16 @@ class TestErrorMessages(unittest.TestCase):
         g.ab = g.a | g.b
         g.start = g.ab + g.ab
         g.whitespace = Regexp(r'\s+')
-        self.grammar = g(start=g.start, ignore=[g.whitespace])
+        self.grammar = g(start=g.start, tokenize=[ignore(g.whitespace)])
         #print(self.grammar.tokenizer._re.pattern)
-    
+
     def test_incomplete_sequence(self):
         source = """
-        A 
+        A
         """
         with self.assertRaises(ParseError):
             Parser(self.grammar, source).run()
-    
+
     def test_unexpected_terminal(self):
         source = """
         A C
@@ -254,4 +277,4 @@ class TestErrorMessages(unittest.TestCase):
         """
         with self.assertRaises(ParseError):
             Parser(self.grammar, source).run()
-    
+

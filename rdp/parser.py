@@ -1,22 +1,29 @@
 from collections import namedtuple
 
 from rdp.ast import Node
-from rdp.exceptions import ParseError, LeftRecursion, UnexpectedToken
+from rdp.exceptions import ParseError, LeftRecursion
+from rdp.tokenizer import START_POSITION
 
 
-class RandomAccessGenerator(object):
-    def __init__(self, generator):
-        self.generator = generator
+class RandomAccessIterator(object):
+    def __init__(self, iterator):
+        self.iterator = iterator
         self.buffer = []
         self.offset = 0
+        self.last = None
 
-    def next(self):
+    @property
+    def position(self):
+        return self.last.end if self.last else START_POSITION
+
+    def __next__(self):
         if self.offset == len(self.buffer):
-            item = next(self.generator)
+            item = next(self.iterator)
             self.buffer.append(item)
         else:
             item = self.buffer[self.offset]
         self.offset += 1
+        self.last = None
         return item
 
     def tell(self):
@@ -25,9 +32,10 @@ class RandomAccessGenerator(object):
     def seek(self, offset):
         if offset < len(self.buffer):
             self.offset = offset
+            self.last = self.buffer[offset - 1] if offset > 0 else None
         else:
             while self.offset != offset:
-                self.next()
+                self.last = next(self)
 
 
 class Parser(object):
@@ -37,21 +45,20 @@ class Parser(object):
         self.grammar = grammar
         self.source = source
         self.stack = []
-        self.tokens = RandomAccessGenerator(grammar.tokenize(source))
+        self.tokens = RandomAccessIterator(grammar.tokenize(source))
         self._cache = {}
 
     def read(self):
         try:
-            return self.tokens.next()
+            return next(self.tokens)
         except StopIteration:
-            raise ParseError('unexpected end of file', len(self.source))
+            raise ParseError('unexpected end of file', self.tokens.position)
 
     def backtrack(self, node):
         self.tokens.seek(node.offset)
 
     def push(self, symbol):
         if self.stack:
-            top = self.stack[-1]
             for entry in self.stack:
                 if entry.offset == self.tokens.tell() and entry.symbol == symbol:
                     raise LeftRecursion()
@@ -100,5 +107,5 @@ class Parser(object):
             junk = self.read()
         except ParseError:
             return arg
-        raise ParseError('unparsed junk: {0}'.format(junk), offset=junk.offset, pos=junk.start)
+        raise ParseError('unparsed junk: {0}'.format(junk), pos=junk.start)
 

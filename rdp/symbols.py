@@ -3,7 +3,7 @@ import abc
 from collections import deque
 
 from rdp.ast import Node
-from rdp.exceptions import ParseError
+from rdp.exceptions import ParseError, UnexpectedToken
 
 
 def to_symbol(str_or_symbol):
@@ -25,11 +25,17 @@ def drop(symbol):
     return symbol
 
 
+def keep(symbol):
+    symbol = to_symbol(symbol)
+    symbol.drop = False
+    return symbol
+
+
 class Symbol(metaclass=abc.ABCMeta):
     def __init__(self, name=''):
         self.flatten = False
         self.transform = None
-        self.drop = False
+        self.drop = None
         self.position = -1
         if name is not None:
             self.name = name
@@ -59,6 +65,7 @@ class Symbol(metaclass=abc.ABCMeta):
 
     def __rshift__(self, func):
         self.transform = func
+        return self
 
     def iter(self):
         visited = set()
@@ -88,12 +95,16 @@ class Terminal(Symbol):
     def __call__(self, parser):
         token = parser.read()
         if token.symbol != self:
-            raise ParseError('expected {0}, found {1}'.format(self, token.symbol), offset=token.offset, pos=token.start)
+            raise UnexpectedToken(token, self)
         yield Node(self, token)
 
     def __repr__(self):
         name = '{0}='.format(self.name) if self.name else ''
-        return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.lexeme))
+        return '<{0} {1}{2}>'.format(
+            self.__class__.__name__,
+            name,
+            repr(self.lexeme)
+        )
 
     def __str__(self):
         if self.name:
@@ -159,7 +170,7 @@ class OneOf(NonTerminal):
                 node.append(child)
                 yield node
             except ParseError as e:
-                if not longest_match_error or longest_match_error.offset < e.offset:
+                if not longest_match_error or longest_match_error < e:
                     longest_match_error = e
                 continue
         raise longest_match_error

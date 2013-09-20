@@ -1,5 +1,4 @@
 import re
-import string
 
 from rdp.symbols import Regexp, flatten
 
@@ -14,10 +13,12 @@ hyphen_word = Regexp(r'[a-zA-Z0-9_-]+')
 identifier = Regexp(r'[a-zA-Z_][a-zA-Z0-9_]*')
 hyphen_identifier = Regexp(r'[a-zA-Z_-][a-zA-Z0-9_-]*')
 
-decimal_integer = Regexp(r'[1-9]\d+')
-hexadecimal_integer = Regexp(r'0x\d+')
-octal_integer = Regexp(r'0o\d+')
-integer = flatten(decimal_integer | hexadecimal_integer | octal_integer)
+py_decimalinteger = Regexp(r'[1-9]\d*') | '0'
+py_hexinteger = Regexp(r'0[xX][0-9a-fA-F]+')
+py_octinteger = Regexp(r'0[oO][0-7]+') | Regexp(r'0[0-7]+')
+py_bininteger = Regexp(r'0[bB][01]+')
+float_literal = Regexp(r'(?:[1-9]\d*|0)?\.\d*(?:[eE][+-]?\d+)?')
+py_integer = flatten(py_decimalinteger | py_hexinteger | py_octinteger | py_bininteger)
 
 
 def quoted_string(quote_char, escape_char='\\'):
@@ -31,6 +32,3 @@ def quoted_string(quote_char, escape_char='\\'):
 double_quoted_string = quoted_string('"')
 single_quoted_string = quoted_string("'")
 
-
-def comma_separated(symbol, **kwargs):
-    return Repeat(symbol, separator=',', **kwargs)
