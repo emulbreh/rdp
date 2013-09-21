@@ -11,3 +11,8 @@ def uncurry(func):
     def uncurried(seq):
         return func(*seq)
     return uncurried
+
+def chain(f, g):
+    def chained(arg):
+        return f(g(arg))
+    return chained

@@ -1,13 +1,17 @@
 import re
 import abc
 from collections import deque
+from copy import copy
 
 from rdp.ast import Node
 from rdp.exceptions import ParseError, UnexpectedToken
+from rdp.utils import chain
 
 
-def to_symbol(str_or_symbol):
+def to_symbol(str_or_symbol, copy_if_not_created=False):
     if isinstance(str_or_symbol, Symbol):
+        if copy_if_not_created:
+            return copy(str_or_symbol)
         return str_or_symbol
     if isinstance(str_or_symbol, str):
         return Terminal(str_or_symbol)
@@ -15,18 +19,19 @@ def to_symbol(str_or_symbol):
 
 
 def flatten(symbol):
+    symbol = to_symbol(symbol, True)
     symbol.flatten = True
     return symbol
 
 
 def drop(symbol):
-    symbol = to_symbol(symbol)
+    symbol = to_symbol(symbol, True)
     symbol.drop = True
     return symbol
 
 
 def keep(symbol):
-    symbol = to_symbol(symbol)
+    symbol = to_symbol(symbol, True)
     symbol.drop = False
     return symbol
 
@@ -64,8 +69,9 @@ class Symbol(metaclass=abc.ABCMeta):
         return to_symbol(other) | self
 
     def __ge__(self, func):
-        self.transform = func
-        return self
+        clone = copy(self)
+        clone.transform = chain(func, self.transform)
+        return clone
 
     def iter(self):
         visited = set()

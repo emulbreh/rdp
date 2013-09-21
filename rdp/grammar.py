@@ -26,11 +26,10 @@ class GrammarBuilder(object):
         symbol = to_symbol(symbol)
         try:
             self._forward_declarations.pop(name).symbol = symbol
-            self._symbols[name] = symbol
         except KeyError:
             pass
-        #if symbol.name:
-        #    symbol = SymbolProxy(symbol)
+        if symbol.name:
+            symbol = SymbolProxy(symbol)
         if symbol.name != name:
             symbol.name = name
         symbol.position = len(self._symbols)
@@ -38,7 +37,8 @@ class GrammarBuilder(object):
 
     def __call__(self, start=None, terminals=None, tokenize=(), drop_terminals=False):
         if any(self._forward_declarations):
-            raise InvalidGrammar('undefined symbols: {0}'.format(', '.join(self._forward_declarations.keys())))
+            undeclared_symbols = self._forward_declarations.keys()
+            raise InvalidGrammar('undefined symbols: {0}'.format(', '.join()))
         return Grammar(start,
             symbols=self._symbols.values(),
             tokenize=tokenize,
