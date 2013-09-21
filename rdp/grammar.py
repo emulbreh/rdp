@@ -90,3 +90,6 @@ class Grammar(Symbol):
 
     def __call__(self, parser):
         yield from self.start(parser)
+
+    def pre_transform(self, node):
+        return [child.transform() for child in node]

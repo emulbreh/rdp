@@ -1,8 +1,11 @@
 import unittest
+from operator import itemgetter
 
 from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Terminal,
-    Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore)
+    Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore, keep)
 from rdp.formatter import GrammarFormatter
+from rdp import builtins
+from rdp.utils import product, uncurry
 
 
 class ParserTestCase(unittest.TestCase):
@@ -221,10 +224,10 @@ class TransformJsonParserTest(ParserTestCase):
         super().setUp()
 
         g = GrammarBuilder()
-        g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?') >> float
-        g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"') >> (lambda s: s[1:-1])
-        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']') >> list
-        g.object_ = drop('{') + flatten(Repeat(g.string_literal + drop(':') + g.expr >> tuple, separator=',')) + drop('}') >> dict
+        g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?') >= float
+        g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"') >= (lambda s: s[1:-1])
+        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']') >= list
+        g.object_ = drop('{') + flatten(Repeat(g.string_literal + drop(':') + g.expr >= tuple, separator=',')) + drop('}') >= dict
         g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
         g.whitespace = Regexp('\\s+')
 
@@ -232,17 +235,43 @@ class TransformJsonParserTest(ParserTestCase):
 
     def test_object(self):
         Parser(self.grammar, '{"foo": "bar"}').run().print_tree()
-        self.assertEqual(Parser(self.grammar, '{"foo": "bar"}').run().transform(), ('expr', [{'foo': 'bar'}]))
+        self.assertEqual(Parser(self.grammar, '{"foo": "bar"}').run().transform(), {'foo': 'bar'})
 
     def test_array(self):
-        self.assertEqual(Parser(self.grammar, '["foo", "bar"]').run().transform(), ('expr', [['foo', 'bar']]))
+        self.assertEqual(Parser(self.grammar, '["foo", "bar"]').run().transform(), ['foo', 'bar'])
 
     def test_numbers(self):
         self.assertEqual(
             Parser(self.grammar, '[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').run().transform(),
-            ('expr', [[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]])
+            [0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]
         )
 
+
+class CalculatorTest(unittest.TestCase):
+    def setUp(self):
+        infix = uncurry(lambda ops, x: x * product(-1 for s in ops if s == '-'))
+
+        g = GrammarBuilder()
+        g.number = Regexp(r'\d+') >= float
+        g.atom = g.number | flatten('(' + g.expr + ')' >= itemgetter(0))
+        g.infix = Repeat(keep('+') | keep('-')) + g.atom >= infix
+        g.product_expr = Repeat(g.infix, separator='*', min=1) >= product
+        g.expr = Repeat(g.product_expr, separator='+', min=1) >= sum
+        g.whitespace = builtins.horizontal_whitespace
+        self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
+
+    def test_expressions(self):
+        Parser(self.grammar, "42").run().print_tree()
+        self.assertEqual(Parser(self.grammar, "42").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "+42").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "--42").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "-+-42").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "40 + 2").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "6 * 7").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "6 * 6 + 6").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "6 + 6 * 6").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "(3 + 4) * 6").run().transform(), 42)
+        self.assertEqual(Parser(self.grammar, "6 + -6 * -6").run().transform(), 42)
 
 
 class TestErrorMessages(unittest.TestCase):

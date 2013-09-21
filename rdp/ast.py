@@ -9,7 +9,7 @@ class Node(object):
         self.offset = self.token.start.source_offset if self.token else None
 
     def append(self, node):
-        if node.symbol.drop or not node:
+        if node.symbol is None or node.symbol.drop:
             return
         if node.symbol.flatten:
             for child in node.children:
@@ -36,18 +36,16 @@ class Node(object):
         return bool(self.token or self.children)
 
     def transform(self):
-        children = [child.transform() for child in self]
-        if self.symbol.transform is not None:
-            if self.token:
-                return self.symbol.transform(self.token.lexeme)
-            return self.symbol.transform(children)
-        return (self.symbol.name, children)
+        return self.symbol.apply_transform(self)
 
     def __len__(self):
         return len(self.children)
 
     def __iter__(self):
         return iter(self.children)
+
+    def __getitem__(self, index):
+        return self.children[index]
 
     def __repr__(self):
         name = '{0}='.format(self.symbol.name) if self.symbol.name else ''
@@ -58,6 +56,3 @@ class Node(object):
         for child in self.children:
             child.print_tree(indent=indent + 1)
 
-
-class Transform(object):
-    pass

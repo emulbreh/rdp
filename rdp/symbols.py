@@ -34,7 +34,7 @@ def keep(symbol):
 class Symbol(metaclass=abc.ABCMeta):
     def __init__(self, name=''):
         self.flatten = False
-        self.transform = None
+        self.transform = lambda x: x
         self.drop = None
         self.position = -1
         if name is not None:
@@ -63,7 +63,7 @@ class Symbol(metaclass=abc.ABCMeta):
     def __ror__(self, other):
         return to_symbol(other) | self
 
-    def __rshift__(self, func):
+    def __ge__(self, func):
         self.transform = func
         return self
 
@@ -81,6 +81,12 @@ class Symbol(metaclass=abc.ABCMeta):
     def terminals(self):
         return (symbol for symbol in self.iter() if isinstance(symbol, Terminal))
 
+    def apply_transform(self, node):
+        return self.transform(self.pre_transform(node))
+
+    def pre_transform(self, node):
+        return node
+
 
 class Terminal(Symbol):
     def __init__(self, lexeme, name=''):
@@ -91,6 +97,9 @@ class Terminal(Symbol):
     @property
     def pattern(self):
         return re.escape(self.lexeme)
+
+    def pre_transform(self, node):
+        return node.token.lexeme
 
     def __call__(self, parser):
         token = parser.read()
@@ -124,7 +133,7 @@ class Epsilon(Terminal):
 
 
 epsilon = Epsilon('')
-empty_match = Node(epsilon)
+empty_match = Node(None)
 
 
 class Regexp(Terminal):
@@ -157,6 +166,9 @@ class NonTerminal(Symbol):
             self.repr_sep.join(repr(symbol) for symbol in self.symbols),
         )
 
+    def pre_transform(self, node):
+        return [child.transform() for child in node]
+
 
 class OneOf(NonTerminal):
     repr_sep = ' | '
@@ -177,6 +189,9 @@ class OneOf(NonTerminal):
 
     def __or__(self, other):
         return self.__class__(self.symbols + [to_symbol(other)])
+
+    def pre_transform(self, node):
+        return node.children[0].transform()
 
 
 class Sequence(NonTerminal):
@@ -239,6 +254,9 @@ class Repeat(Symbol):
             raise ParseError("too few {0}".format(self.symbol))
         yield node
 
+    def pre_transform(self, node):
+        return [child.transform() for child in node]
+
 
 class SymbolWrapper(Symbol):
     def __init__(self, symbol, name=''):
@@ -247,6 +265,9 @@ class SymbolWrapper(Symbol):
 
     def __iter__(self):
         yield self.symbol
+
+    def pre_transform(self, node):
+        return self.symbol.transform()
 
 
 class SymbolProxy(SymbolWrapper):
@@ -276,7 +297,7 @@ class Optional(SymbolWrapper):
         try:
             node = yield self.symbol
         except ParseError:
-            node = Node(self)
+            node = empty_match
         yield node
 
 
