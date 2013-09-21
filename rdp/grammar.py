@@ -3,6 +3,7 @@ from operator import attrgetter
 from rdp.tokenizer import Tokenizer
 from rdp.exceptions import InvalidGrammar
 from rdp.symbols import to_symbol, Symbol, SymbolProxy, Terminal, epsilon
+from rdp.parser import Parser
 
 
 class GrammarBuilder(object):
@@ -38,7 +39,7 @@ class GrammarBuilder(object):
     def __call__(self, start=None, terminals=None, tokenize=(), drop_terminals=False):
         if any(self._forward_declarations):
             undeclared_symbols = self._forward_declarations.keys()
-            raise InvalidGrammar('undefined symbols: {0}'.format(', '.join()))
+            raise InvalidGrammar('undefined symbols: {0}'.format(', '.join(undeclared_symbols)))
         return Grammar(start,
             symbols=self._symbols.values(),
             tokenize=tokenize,
@@ -93,3 +94,8 @@ class Grammar(Symbol):
 
     def pre_transform(self, node):
         return [child.transform() for child in node]
+
+    def parse(self, source, transform=False):
+        parser = Parser(self, source)
+        return parser.run()
+

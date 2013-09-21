@@ -215,19 +215,23 @@ class Sequence(NonTerminal):
 
 
 class Repeat(Symbol):
-    def __init__(self, symbol, separator=None, min=0, trailing=False, greedy=True):
+    def __init__(self, symbol, separator=None, min=0, trailing=False):
         super().__init__()
         self.symbol = to_symbol(symbol)
         self.separator = None if separator is None else to_symbol(separator)
         assert not trailing or separator, "separator symbol required"
         self.trailing = trailing
-        self.greedy = greedy
         self.min = min
 
     def __iter__(self):
         yield self.symbol
         if self.separator:
             yield self.separator
+
+    def __pos__(self):
+        clone = copy(self)
+        clone.min = 1
+        return clone
 
     def __call__(self, parser):
         node = Node(self)
@@ -244,9 +248,6 @@ class Repeat(Symbol):
                 if self.separator and node:
                     if self.trailing and last_sep:
                         node.append(last_sep)
-                        break
-                    if not self.greedy:
-                        parser.backtrack(last_sep)
                         break
                     raise
                 break

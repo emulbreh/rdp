@@ -12,7 +12,14 @@ def uncurry(func):
         return func(*seq)
     return uncurried
 
+
 def chain(f, g):
     def chained(arg):
         return f(g(arg))
     return chained
+
+
+def const(value):
+    def _const(*args, **kwargs):
+        return value
+    return _const

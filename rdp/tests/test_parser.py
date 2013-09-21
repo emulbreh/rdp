@@ -11,7 +11,7 @@ from rdp.utils import product, uncurry
 class ParserTestCase(unittest.TestCase):
     def assert_tree_eq(self, node, spec):
         if isinstance(node, str):
-            node = Parser(self.grammar, node).run()
+            node = self.grammar.parse(node)
         if isinstance(spec, str):
             self.assertTrue(node.token is not None, 'expected a terminal, found {0}'.format(node))
             self.assertEqual(node.token.lexeme, spec)
@@ -22,7 +22,7 @@ class ParserTestCase(unittest.TestCase):
             self.assert_tree_eq(child, child_spec)
 
     def parse(self, source):
-        return Parser(self.grammar, source).run()
+        return self.grammar.parse(source)
 
 
 class RegexpParserTest(ParserTestCase):
@@ -198,21 +198,21 @@ class JsonParserTest(ParserTestCase):
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
 
     def test_object(self):
-        self.assert_tree_eq(Parser(self.grammar, '{"foo": "bar"}').run(), (
+        self.assert_tree_eq(self.grammar.parse('{"foo": "bar"}'), (
             'expr', [
                 ('object_', ['"foo"', '"bar"']),
             ]
         ))
 
     def test_array(self):
-        self.assert_tree_eq(Parser(self.grammar, '["foo", "bar"]').run(), (
+        self.assert_tree_eq(self.grammar.parse('["foo", "bar"]'), (
             'expr', [
                 ('array', ['"foo"', '"bar"']),
             ]
         ))
 
     def test_numbers(self):
-        self.assert_tree_eq(Parser(self.grammar, '[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').run(), (
+        self.assert_tree_eq(self.grammar.parse('[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]'), (
             'expr', [
                 ('array', ['0', '1', '42', '3.14', '-1', '-23.', '0.001', '1e10', '13.5e-12']),
             ]
@@ -234,15 +234,15 @@ class TransformJsonParserTest(ParserTestCase):
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)])
 
     def test_object(self):
-        Parser(self.grammar, '{"foo": "bar"}').run().print_tree()
-        self.assertEqual(Parser(self.grammar, '{"foo": "bar"}').run().transform(), {'foo': 'bar'})
+        self.grammar.parse('{"foo": "bar"}').print_tree()
+        self.assertEqual(self.grammar.parse('{"foo": "bar"}').transform(), {'foo': 'bar'})
 
     def test_array(self):
-        self.assertEqual(Parser(self.grammar, '["foo", "bar"]').run().transform(), ['foo', 'bar'])
+        self.assertEqual(self.grammar.parse('["foo", "bar"]').transform(), ['foo', 'bar'])
 
     def test_numbers(self):
         self.assertEqual(
-            Parser(self.grammar, '[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').run().transform(),
+            self.grammar.parse('[0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]').transform(),
             [0, 1, 42, 3.14, -1, -23., 0.001, 1e10, 13.5e-12]
         )
 
@@ -255,23 +255,23 @@ class CalculatorTest(unittest.TestCase):
         g.number = Regexp(r'\d+') >= float
         g.atom = g.number | flatten('(' + g.expr + ')' >= itemgetter(0))
         g.infix = Repeat(keep('+') | keep('-')) + g.atom >= infix
-        g.product_expr = Repeat(g.infix, separator='*', min=1) >= product
-        g.expr = Repeat(g.product_expr, separator='+', min=1) >= sum
+        g.product_expr = +Repeat(g.infix, separator='*') >= product
+        g.expr = +Repeat(g.product_expr, separator='+') >= sum
         g.whitespace = builtins.horizontal_whitespace
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
 
     def test_expressions(self):
-        Parser(self.grammar, "42").run().print_tree()
-        self.assertEqual(Parser(self.grammar, "42").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "+42").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "--42").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "-+-42").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "40 + 2").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "6 * 7").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "6 * 6 + 6").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "6 + 6 * 6").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "(3 + 4) * 6").run().transform(), 42)
-        self.assertEqual(Parser(self.grammar, "6 + -6 * -6").run().transform(), 42)
+        self.grammar.parse("42").print_tree()
+        self.assertEqual(self.grammar.parse("42").transform(), 42)
+        self.assertEqual(self.grammar.parse("+42").transform(), 42)
+        self.assertEqual(self.grammar.parse("--42").transform(), 42)
+        self.assertEqual(self.grammar.parse("-+-42").transform(), 42)
+        self.assertEqual(self.grammar.parse("40 + 2").transform(), 42)
+        self.assertEqual(self.grammar.parse("6 * 7").transform(), 42)
+        self.assertEqual(self.grammar.parse("6 * 6 + 6").transform(), 42)
+        self.assertEqual(self.grammar.parse("6 + 6 * 6").transform(), 42)
+        self.assertEqual(self.grammar.parse("(3 + 4) * 6").transform(), 42)
+        self.assertEqual(self.grammar.parse("6 + -6 * -6").transform(), 42)
 
 
 class TestErrorMessages(unittest.TestCase):
@@ -284,26 +284,25 @@ class TestErrorMessages(unittest.TestCase):
         g.start = g.ab + g.ab
         g.whitespace = Regexp(r'\s+')
         self.grammar = g(start=g.start, tokenize=[ignore(g.whitespace)])
-        #print(self.grammar.tokenizer._re.pattern)
 
     def test_incomplete_sequence(self):
         source = """
         A
         """
         with self.assertRaises(ParseError):
-            Parser(self.grammar, source).run()
+            self.grammar.parse(source)
 
     def test_unexpected_terminal(self):
         source = """
         A C
         """
         with self.assertRaises(ParseError):
-            Parser(self.grammar, source).run()
+            self.grammar.parse(source)
 
     def test_unparsed_junk(self):
         source = """
         A B A B
         """
         with self.assertRaises(ParseError):
-            Parser(self.grammar, source).run()
+            self.grammar.parse(source)
 
