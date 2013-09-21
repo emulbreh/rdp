@@ -52,7 +52,7 @@ class Node(object):
         return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.token))
 
     def print_tree(self, indent=0):
-        print('{0}{1} ({2})'.format(4 * indent * ' ', self.symbol.name, repr(getattr(self.token, 'lexeme', ''))))
+        print('{0}{1} ({2})'.format(4 * indent * ' ', self.symbol, repr(getattr(self.token, 'lexeme', ''))))
         for child in self.children:
             child.print_tree(indent=indent + 1)
 
