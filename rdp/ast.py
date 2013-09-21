@@ -51,8 +51,15 @@ class Node(object):
         name = '{0}='.format(self.symbol.name) if self.symbol.name else ''
         return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.token))
 
-    def print_tree(self, indent=0):
-        print('{0}{1} ({2})'.format(4 * indent * ' ', self.symbol, repr(getattr(self.token, 'lexeme', ''))))
-        for child in self.children:
-            child.print_tree(indent=indent + 1)
-
+    def print_tree(self):
+        # FIXME: try to use box drawing characters: ┕, ━, ┣, ┃
+        def lines(node, indent):
+            for i, child in enumerate(node):
+                yield '{indent}|___ {symbol} ({lexeme})'.format(
+                    indent=indent,
+                    symbol=child.symbol,
+                    lexeme=repr(getattr(child.token, 'lexeme', '')),
+                )
+                next_indent = '  ' if i == len(node) - 1 else '|  '
+                yield from lines(child, indent + next_indent)
+        print(str(self.symbol) + "\n" + "\n".join(lines(self, '')))
