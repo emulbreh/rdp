@@ -2,7 +2,7 @@ from operator import attrgetter
 
 from rdp.tokenizer import Tokenizer
 from rdp.exceptions import InvalidGrammar
-from rdp.symbols import to_symbol, Symbol, SymbolProxy, Terminal, epsilon
+from rdp.symbols import to_symbol, Symbol, SymbolProxy, Alias, Terminal, epsilon
 from rdp.parser import Parser
 
 
@@ -29,10 +29,7 @@ class GrammarBuilder(object):
             self._forward_declarations.pop(name).symbol = symbol
         except KeyError:
             pass
-        if symbol.name:
-            symbol = SymbolProxy(symbol)
-        if symbol.name != name:
-            symbol.name = name
+        symbol = symbol.named(name)
         symbol.position = len(self._symbols)
         self._symbols[name] = symbol
 
@@ -68,7 +65,7 @@ class Grammar(Symbol):
                 if isinstance(s, Terminal):
                     if s.__class__ == Terminal and s.drop is None:
                         s.drop = self.drop_terminals
-                    if s not in self.terminals and s != epsilon:
+                    if s not in self.terminals and s is not epsilon:
                         self.terminals.append(s)
 
         self.token_transforms = tokenize
@@ -82,9 +79,8 @@ class Grammar(Symbol):
 
     def rules(self):
         for symbol in sorted(self.symbols, key=attrgetter('position')):
-            if not symbol.name or isinstance(symbol, SymbolProxy):
-                continue
-            yield symbol
+            if symbol.is_rule():
+                yield symbol
 
     def __iter__(self):
         yield from self.start

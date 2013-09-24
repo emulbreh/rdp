@@ -37,13 +37,22 @@ def keep(symbol):
 
 
 class Symbol(metaclass=abc.ABCMeta):
-    def __init__(self, name=''):
+    def __init__(self, name=None):
         self.flatten = False
         self.transform = lambda x: x
         self.drop = None
         self.position = -1
-        if name is not None:
-            self.name = name
+        self._name = name
+
+    def named(self, name):
+        if self._name:
+            return Alias(self, name)
+        self._name = name
+        return self
+
+    @property
+    def name(self):
+        return self._name
 
     @abc.abstractmethod
     def __call__(self, parser):
@@ -93,6 +102,9 @@ class Symbol(metaclass=abc.ABCMeta):
     def pre_transform(self, node):
         return node
 
+    def is_rule(self):
+        return bool(self.name)
+
 
 class Terminal(Symbol):
     def __init__(self, lexeme, name=''):
@@ -133,10 +145,18 @@ class Terminal(Symbol):
         return hash(self.lexeme)
 
 
-class Epsilon(Terminal):
+class Marker(Terminal):
+    def __init__(self, name):
+        super().__init__('', name=name)
+
+    @property
+    def pattern(self):
+        return None
+
+
+class Epsilon(Marker):
     def __call__(self, parser):
         yield Node(self)
-
 
 epsilon = Epsilon('')
 empty_match = Node(None)
@@ -153,13 +173,12 @@ class Regexp(Terminal):
         return self.lexeme
 
 
-class NonTerminal(Symbol):
+class CompoundSymbol(Symbol):
     repr_sep = ', '
 
     def __init__(self, symbols):
-        super(NonTerminal, self).__init__()
+        super().__init__()
         self.symbols = symbols
-        self.name = ''
 
     def __iter__(self):
         yield from self.symbols
@@ -176,7 +195,7 @@ class NonTerminal(Symbol):
         return [child.transform() for child in node]
 
 
-class OneOf(NonTerminal):
+class OneOf(CompoundSymbol):
     repr_sep = ' | '
 
     def __call__(self, parser):
@@ -200,7 +219,7 @@ class OneOf(NonTerminal):
         return node.children[0].transform()
 
 
-class Sequence(NonTerminal):
+class Sequence(CompoundSymbol):
     repr_sep = ' + '
 
     def __call__(self, parser):
@@ -297,6 +316,28 @@ class SymbolProxy(SymbolWrapper):
     @property
     def name(self):
         return self.symbol.name
+
+    def is_rule(self):
+        return False
+
+
+class Alias(SymbolProxy):
+    def __init__(self, symbol, name):
+        super().__init__(symbol)
+        self.alias = name
+
+    @property
+    def name(self):
+        return self.alias
+
+    def named(self, name):
+        return Alias(self.symbol, name)
+
+    def __call__(self, parser):
+        node = yield self.symbol
+        if node.symbol == self.symbol:
+            node.symbol = self
+        yield node
 
 
 class Optional(SymbolWrapper):

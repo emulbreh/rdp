@@ -2,7 +2,6 @@ from collections import namedtuple
 
 from rdp.ast import Node
 from rdp.exceptions import ParseError, LeftRecursion
-from rdp.tokenizer import START_POSITION
 
 
 class RandomAccessIterator(object):
@@ -14,7 +13,7 @@ class RandomAccessIterator(object):
 
     @property
     def position(self):
-        return self.last.end if self.last else START_POSITION
+        return self.last.end if self.last else 0
 
     def __next__(self):
         if self.offset == len(self.buffer):
@@ -107,5 +106,5 @@ class Parser(object):
             junk = self.read()
         except ParseError:
             return arg
-        raise ParseError('unparsed junk: {0}'.format(junk), pos=junk.start)
+        raise ParseError('unparsed junk: {0}'.format(junk), junk.start)
 

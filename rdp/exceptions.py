@@ -4,16 +4,16 @@ class InvalidGrammar(Exception):
 
 
 class ParseError(Exception):
-    def __init__(self, msg, pos):
-        msg = '{0} at line {1}[{2}]'.format(msg, pos.line, pos.line_offset)
+    def __init__(self, msg, offset):
+        msg = '{0} at offset {1}'.format(msg, offset)
         super().__init__(msg)
-        self.pos = pos
+        self.offset = offset
 
     def __lt__(self, other):
-        return self.pos < other.pos
+        return self.offset < other.offset
 
     def __le__(self, other):
-        return self.pos <= other.pos
+        return self.offset <= other.offset
 
 
 class UnexpectedToken(ParseError):

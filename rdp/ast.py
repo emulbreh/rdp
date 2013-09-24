@@ -6,7 +6,7 @@ class Node(object):
         self.token = token
         self.children = []
         self.parent = None
-        self.offset = self.token.start.source_offset if self.token else None
+        self.offset = self.token.start if self.token else None
 
     def append(self, node):
         if node.symbol is None or node.symbol.drop:
@@ -50,6 +50,11 @@ class Node(object):
     def __repr__(self):
         name = '{0}='.format(self.symbol.name) if self.symbol.name else ''
         return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.token))
+
+    def tuple_tree(self):
+        if self.token:
+            return (self.symbol.name, self.token.lexeme)
+        return (self.symbol.name, [node.tuple_tree() for node in self])
 
     def print_tree(self):
         # FIXME: try to use box drawing characters: ┕, ━, ┣, ┃
