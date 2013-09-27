@@ -249,13 +249,13 @@ class TransformJsonParserTest(ParserTestCase):
 
 class CalculatorTest(unittest.TestCase):
     def setUp(self):
-        infix = uncurry(lambda ops, x: x * product(-1 for s in ops if s == '-'))
+        signed = uncurry(lambda ops, x: x * product(-1 for s in ops if s == '-'))
 
         g = GrammarBuilder()
         g.number = Regexp(r'\d+') >= float
         g.atom = g.number | flatten('(' + g.expr + ')' >= itemgetter(0))
-        g.infix = Repeat(keep('+') | keep('-')) + g.atom >= infix
-        g.product_expr = +Repeat(g.infix, separator='*') >= product
+        g.signed = Repeat(keep('+') | keep('-')) + g.atom >= signed
+        g.product_expr = +Repeat(g.signed, separator='*') >= product
         g.expr = +Repeat(g.product_expr, separator='+') >= sum
         g.whitespace = builtins.horizontal_whitespace
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
