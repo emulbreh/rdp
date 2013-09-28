@@ -96,10 +96,7 @@ class Symbol(metaclass=abc.ABCMeta):
         return (symbol for symbol in self.iter() if isinstance(symbol, Terminal))
 
     def apply_transform(self, node):
-        return self.transform(self.pre_transform(node))
-
-    def pre_transform(self, node):
-        return node
+        return self.transform(node)
 
     def is_rule(self):
         return bool(self.name)
@@ -115,8 +112,8 @@ class Terminal(Symbol):
     def pattern(self):
         return re.escape(self.lexeme)
 
-    def pre_transform(self, node):
-        return node.token.lexeme
+    def apply_transform(self, node):
+        return self.transform(node.token.lexeme)
 
     def __call__(self, parser):
         token = parser.read()
@@ -190,8 +187,8 @@ class CompoundSymbol(Symbol):
             self.repr_sep.join(repr(symbol) for symbol in self.symbols),
         )
 
-    def pre_transform(self, node):
-        return [child.transform() for child in node]
+    def apply_transform(self, node):
+        return self.transform([child.transform() for child in node])
 
 
 class OneOf(CompoundSymbol):
@@ -214,8 +211,8 @@ class OneOf(CompoundSymbol):
     def __or__(self, other):
         return self.__class__(self.symbols + [to_symbol(other)])
 
-    def pre_transform(self, node):
-        return node.children[0].transform()
+    def apply_transform(self, node):
+        return self.transform(node.children[0].transform())
 
 
 class Sequence(CompoundSymbol):
@@ -285,8 +282,8 @@ class Repeat(Symbol):
             raise ParseError("too few {0}".format(self.symbol))
         yield node
 
-    def pre_transform(self, node):
-        return [child.transform() for child in node]
+    def apply_transform(self, node):
+        return self.transform([child.transform() for child in node])
 
 
 class SymbolWrapper(Symbol):
@@ -297,8 +294,8 @@ class SymbolWrapper(Symbol):
     def __iter__(self):
         yield self.symbol
 
-    def pre_transform(self, node):
-        return self.symbol.transform()
+    def apply_transform(self, node):
+        return self.transform(self.symbol.transform())
 
 
 class SymbolProxy(SymbolWrapper):
