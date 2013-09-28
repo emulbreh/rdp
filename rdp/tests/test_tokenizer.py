@@ -41,6 +41,7 @@ class TokenizerTest(unittest.TestCase):
         
         source = textwrap.dedent("""
         foo
+        foo
             baz(arg)
             boo
                 baz(
@@ -55,7 +56,7 @@ class TokenizerTest(unittest.TestCase):
         self.assertEqual(
             [t.lexeme or t.symbol.name for t in grammar.tokenize(source)],
             [
-                'foo', 'INDENT', 
+                'foo', 'foo', 'INDENT', 
                 'baz', '(', 'arg', ')', 
                 'boo', 'INDENT', 
                 'baz', '(', 'arg', ')', 'DEDENT', 

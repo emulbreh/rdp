@@ -33,15 +33,11 @@ class GrammarBuilder(object):
         symbol.position = len(self._symbols)
         self._symbols[name] = symbol
 
-    def __call__(self, start=None, terminals=None, tokenize=(), drop_terminals=False):
+    def __call__(self, start=None, **kwargs):
         if any(self._forward_declarations):
             undeclared_symbols = self._forward_declarations.keys()
             raise InvalidGrammar('undefined symbols: {0}'.format(', '.join(undeclared_symbols)))
-        return Grammar(start,
-            symbols=self._symbols.values(),
-            tokenize=tokenize,
-            drop_terminals=drop_terminals,
-        )
+        return Grammar(start, symbols=self._symbols.values(), **kwargs)
 
 
 def ignore(*symbols):
@@ -91,7 +87,7 @@ class Grammar(Symbol):
     def pre_transform(self, node):
         return [child.transform() for child in node]
 
-    def parse(self, source, transform=False):
-        parser = Parser(self, source)
+    def parse(self, source, **kwargs):
+        parser = Parser(self, source, **kwargs)
         return parser.run()
 

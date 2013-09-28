@@ -1,12 +1,12 @@
 
 
 class Node(object):
-    def __init__(self, symbol, token=None):
+    def __init__(self, symbol, offset, token=None):
         self.symbol = symbol
+        self.offset = offset
         self.token = token
         self.children = []
         self.parent = None
-        self.offset = self.token.start if self.token else None
 
     def append(self, node):
         if node.symbol is None or node.symbol.drop:
@@ -17,10 +17,6 @@ class Node(object):
         else:
             self.children.append(node)
             node.parent = self
-            if self.offset is None:
-                self.offset = node.offset
-            else:
-                self.offset = min(self.offset, node.offset)
 
     def remove(self, node):
         try:
@@ -50,6 +46,11 @@ class Node(object):
     def __repr__(self):
         name = '{0}='.format(self.symbol.name) if self.symbol.name else ''
         return '<{0} {1}{2}>'.format(self.__class__.__name__, name, repr(self.token))
+        
+    def __str__(self):
+        if self.token:
+            return '{0} {1}'.format(self.symbol, repr(self.token.lexeme))
+        return str(self.symbol)
 
     def tuple_tree(self):
         if self.token:
@@ -60,11 +61,7 @@ class Node(object):
         # FIXME: try to use box drawing characters: ┕, ━, ┣, ┃
         def lines(node, indent):
             for i, child in enumerate(node):
-                yield '{indent}|___ {symbol} ({lexeme})'.format(
-                    indent=indent,
-                    symbol=child.symbol,
-                    lexeme=repr(getattr(child.token, 'lexeme', '')),
-                )
-                next_indent = '  ' if i == len(node) - 1 else '|  '
+                yield '{0}|--- {1}'.format(indent, child)
+                next_indent = '   ' if i == len(node) - 1 else '|  '
                 yield from lines(child, indent + next_indent)
-        print(str(self.symbol) + "\n" + "\n".join(lines(self, '')))
+        print(str(self) + "\n" + "\n".join(lines(self, '')))

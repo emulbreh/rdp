@@ -51,6 +51,9 @@ class GrammarFormatter:
 
     def format_grammar(self, grammar):
         return '<grammar {0}>'.format(grammar)
+        
+    def format_marker(self, marker):
+        return '<{0}>'.format(marker.name)
 
     def format_lookahead(self, lookahead):
         return '(?>{0})'.format(self.format_symbol(lookahead.symbol))

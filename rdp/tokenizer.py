@@ -24,8 +24,11 @@ class Token:
     def __contains__(self, s):
         return s in self.lexeme
 
+    def __bool__(self):
+        return bool(self.lexeme)
+
     def __repr__(self):
-        return '<Token {0} at {1}]>'.format(self.lexeme, self.start)
+        return '<Token {0} {1} pos={2}>'.format(self.symbol.name or '', repr(self.lexeme), self.start)
 
     def split(self, offset):
         a, b = self.lexeme[:offset], self.lexeme[offset:]

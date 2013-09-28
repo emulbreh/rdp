@@ -5,7 +5,7 @@ from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Termin
     Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore, keep)
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
-from rdp.utils import product, uncurry
+from rdp.utils import product, uncurry, const
 
 
 class ParserTestCase(unittest.TestCase):
@@ -127,6 +127,20 @@ class RepeatWithTrailingSeparatorParserTest(ParserTestCase):
         ]))
 
 
+class RepeatWithLeadingSeparatorParserTest(ParserTestCase):
+    def setUp(self):
+        super().setUp()
+        g = GrammarBuilder()
+        g.seq = Repeat('A', separator=',', leading=True)
+        self.grammar = g(start=g.seq)
+    
+    def test_without_leading_separator(self):
+        self.assert_tree_eq('A,A', ('seq', ['A', ',', 'A']))
+
+    def test_with_leading_separator(self):
+        self.assert_tree_eq(',A,A', ('seq', [',', 'A', ',', 'A']))
+
+
 class RepeatWithoutSeparatorParserTest(ParserTestCase):
     def setUp(self):
         super().setUp()
@@ -180,7 +194,7 @@ class LeftRecursionTest(ParserTestCase):
         grammar = g(start=g.foo)
 
         with self.assertRaises(LeftRecursion):
-            Parser(grammar, 'xx').run(100)
+            grammar.parse('xx', detect_left_recursion=True)
 
 
 class JsonParserTest(ParserTestCase):
@@ -228,7 +242,9 @@ class TransformJsonParserTest(ParserTestCase):
         g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"') >= (lambda s: s[1:-1])
         g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']') >= list
         g.object_ = drop('{') + flatten(Repeat(g.string_literal + drop(':') + g.expr >= tuple, separator=',')) + drop('}') >= dict
-        g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
+        g.boolean = (Terminal('true') | Terminal('false')) >= (lambda s: s == 'true')
+        g.null = Terminal('null') >= const(None)
+        g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_ | g.boolean | g.null)
         g.whitespace = Regexp('\\s+')
 
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)])

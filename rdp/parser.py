@@ -40,24 +40,32 @@ class RandomAccessIterator(object):
 class Parser(object):
     StackEntry = namedtuple('StackEntry', ['symbol', 'generator', 'offset'])
 
-    def __init__(self, grammar, source):
+    def __init__(self, grammar, source, detect_left_recursion=False):
         self.grammar = grammar
         self.source = source
         self.stack = []
         self.tokens = RandomAccessIterator(grammar.tokenize(source))
         self._cache = {}
+        self.detect_left_recursion = detect_left_recursion
 
     def read(self):
         try:
             return next(self.tokens)
         except StopIteration:
-            raise ParseError('unexpected end of file', self.tokens.position)
+            raise ParseError('unexpected end of file', self.tokens.offset)
 
     def backtrack(self, node):
         self.tokens.seek(node.offset)
+        
+    @property
+    def offset(self):
+        return self.tokens.offset
+        
+    def node(self, symbol, token=None, offset_diff=0):
+        return Node(symbol, self.tokens.offset + offset_diff, token=token)
 
     def push(self, symbol):
-        if self.stack:
+        if self.stack and self.detect_left_recursion:
             for entry in self.stack:
                 if entry.offset == self.tokens.tell() and entry.symbol == symbol:
                     raise LeftRecursion()
@@ -69,7 +77,7 @@ class Parser(object):
             offset=self.tokens.tell(),
         )
         self.stack.append(entry)
-        #print('stack =', '\n- '.join(repr(e.symbol) for e in self.stack))
+        #print('stack =\n  -', '\n  - '.join(str(e.symbol) for e in self.stack))
         return next(entry.generator)
 
     def run(self, limit=None):

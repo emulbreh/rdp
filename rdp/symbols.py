@@ -62,8 +62,7 @@ class Symbol(metaclass=abc.ABCMeta):
         yield from ()
 
     def __str__(self):
-        name = self.name if self.name else 'anonymous'
-        return '{0}: {1}'.format(self.__class__.__name__, name)
+        return '<{0}>'.format(self.name)
 
     def __add__(self, other):
         return Sequence([self, to_symbol(other)])
@@ -123,7 +122,7 @@ class Terminal(Symbol):
         token = parser.read()
         if token.symbol != self:
             raise UnexpectedToken(token, self)
-        yield Node(self, token)
+        yield parser.node(self, token, -1)
 
     def __repr__(self):
         name = '{0}='.format(self.name) if self.name else ''
@@ -135,7 +134,7 @@ class Terminal(Symbol):
 
     def __str__(self):
         if self.name:
-            return self.name
+            return '<{0}>'.format(self.name)
         return repr(self.lexeme)
 
     def __eq__(self, other):
@@ -156,10 +155,10 @@ class Marker(Terminal):
 
 class Epsilon(Marker):
     def __call__(self, parser):
-        yield Node(self)
+        yield parser.node(self)
 
 epsilon = Epsilon('')
-empty_match = Node(None)
+empty_match = Node(None, None)
 
 
 class Regexp(Terminal):
@@ -199,7 +198,7 @@ class OneOf(CompoundSymbol):
     repr_sep = ' | '
 
     def __call__(self, parser):
-        node = Node(self)
+        node = parser.node(self)
         longest_match_error = None
         for symbol in self.symbols:
             try:
@@ -223,7 +222,7 @@ class Sequence(CompoundSymbol):
     repr_sep = ' + '
 
     def __call__(self, parser):
-        node = Node(self)
+        node = parser.node(self)
         for symbol in self.symbols:
             value = yield symbol
             node.append(value)
@@ -234,12 +233,13 @@ class Sequence(CompoundSymbol):
 
 
 class Repeat(Symbol):
-    def __init__(self, symbol, separator=None, min=0, trailing=False):
+    def __init__(self, symbol, separator=None, min=0, trailing=False, leading=False):
         super().__init__()
         self.symbol = to_symbol(symbol)
         self.separator = None if separator is None else to_symbol(separator)
         assert not trailing or separator, "separator symbol required"
         self.trailing = trailing
+        self.leading = leading
         self.min = min
 
     def __iter__(self):
@@ -253,7 +253,7 @@ class Repeat(Symbol):
         return clone
 
     def __call__(self, parser):
-        node = Node(self)
+        node = parser.node(self)
         last_sep = None
         n = 0
         while True:
@@ -261,15 +261,20 @@ class Repeat(Symbol):
                 child = yield self.symbol
                 if last_sep:
                     node.append(last_sep)
+                    last_sep = None
                 n += 1
                 node.append(child)
             except ParseError:
-                if self.separator and node:
-                    if self.trailing and last_sep:
+                if not self.separator:
+                    break
+                if node or last_sep is not None:
+                    if self.trailing and node and last_sep is not None:
                         node.append(last_sep)
                         break
                     raise
-                break
+                if not self.leading:
+                    break
+
             if self.separator:
                 try:
                     last_sep = yield self.separator
@@ -305,7 +310,7 @@ class SymbolProxy(SymbolWrapper):
         yield node
 
     def __str__(self):
-        return '<SymbolProxy {0}>'.format(repr(self.symbol))
+        return '<SymbolProxy {0}>'.format(self.symbol)
 
     def __eq__(self, other):
         return isinstance(other, SymbolProxy) and self.symbol == other.symbol
