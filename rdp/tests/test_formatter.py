@@ -1,7 +1,7 @@
 import unittest
 import textwrap
 
-from rdp import GrammarBuilder, flatten, drop, epsilon, Repeat, Terminal, Regexp, Parser, epsilon
+from rdp import GrammarBuilder, flatten, drop, epsilon, repeat, Terminal, Regexp, Parser, epsilon
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
 

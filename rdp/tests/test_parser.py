@@ -1,7 +1,7 @@
 import unittest
 from operator import itemgetter
 
-from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Terminal,
+from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, repeat, Terminal,
     Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore, keep)
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
@@ -59,7 +59,7 @@ class RepeatWithSeparatorParserTest(ParserTestCase):
         super().setUp()
         g = GrammarBuilder()
         g.ab = Terminal('A') | Terminal('B')
-        g.seq = Repeat(g.ab, separator=',')
+        g.seq = repeat(g.ab, separator=',')
         self.grammar = g(start=g.seq)
 
     def test_zero_items(self):
@@ -93,10 +93,11 @@ class RepeatWithTrailingSeparatorParserTest(ParserTestCase):
         super().setUp()
         g = GrammarBuilder()
         g.ab = Terminal('A') | Terminal('B')
-        g.seq = Repeat(g.ab, separator=',', trailing=True)
+        g.seq = repeat(g.ab, separator=',', trailing=True)
         self.grammar = g(start=g.seq)
 
     def test_zero_items(self):
+        self.grammar.parse('').print_tree()
         self.assert_tree_eq('', ('seq', []))
         with self.assertRaises(ParseError):
             self.parse(',')
@@ -131,9 +132,9 @@ class RepeatWithLeadingSeparatorParserTest(ParserTestCase):
     def setUp(self):
         super().setUp()
         g = GrammarBuilder()
-        g.seq = Repeat('A', separator=',', leading=True)
+        g.seq = repeat('A', separator=',', leading=True)
         self.grammar = g(start=g.seq)
-    
+
     def test_without_leading_separator(self):
         self.assert_tree_eq('A,A', ('seq', ['A', ',', 'A']))
 
@@ -146,7 +147,7 @@ class RepeatWithoutSeparatorParserTest(ParserTestCase):
         super().setUp()
         g = GrammarBuilder()
         g.ab = flatten(Terminal('A') | Terminal('B'))
-        g.seq = Repeat(g.ab)
+        g.seq = repeat(g.ab)
         self.grammar = g(start=g.seq)
 
     def test_zero_items(self):
@@ -204,8 +205,8 @@ class JsonParserTest(ParserTestCase):
         g = GrammarBuilder()
         g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?')
         g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"')
-        g.array = '[' + flatten(Repeat(g.expr, separator=drop(','))) + ']'
-        g.object_ = '{' + flatten(Repeat(flatten(g.string_literal + ':' + g.expr), separator=',')) + '}'
+        g.array = '[' + flatten(repeat(g.expr, separator=drop(','))) + ']'
+        g.object_ = '{' + flatten(repeat(flatten(g.string_literal + ':' + g.expr), separator=',')) + '}'
         g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_)
         g.whitespace = Regexp('\\s+')
 
@@ -240,17 +241,17 @@ class TransformJsonParserTest(ParserTestCase):
         g = GrammarBuilder()
         g.number_literal = Regexp(r'-?(?:[1-9]\d*|0)(?:\.\d*)?(?:[eE][+-]?\d+)?') >= float
         g.string_literal = Regexp(r'"(?:[^"]|\\(?:["\\nbfrt]|u[0-9a-fA-F]{4}))*"') >= (lambda s: s[1:-1])
-        g.array = drop('[') + flatten(Repeat(g.expr, separator=drop(','))) + drop(']') >= list
-        g.object_ = drop('{') + flatten(Repeat(g.string_literal + drop(':') + g.expr >= tuple, separator=',')) + drop('}') >= dict
-        g.boolean = (Terminal('true') | Terminal('false')) >= (lambda s: s == 'true')
-        g.null = Terminal('null') >= const(None)
+        g.array = '[' + flatten(repeat(g.expr, separator=',')) + ']' >= list
+        g.object_item = g.string_literal + ':' + g.expr >= tuple
+        g.object_ = '{' + flatten(repeat(g.object_item, separator=',')) + '}' >= dict
+        g.boolean = keep('true') | keep('false') >= (lambda s: s == 'true')
+        g.null = keep('null') >= const(None)
         g.expr = flatten(g.number_literal | g.string_literal | g.array | g.object_ | g.boolean | g.null)
         g.whitespace = Regexp('\\s+')
-
-        self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)])
+        self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
 
     def test_object(self):
-        self.grammar.parse('{"foo": "bar"}').print_tree()
+        self.grammar.parse('{"foo": "bar", "baz": "boo", "123": 42}').print_tree()
         self.assertEqual(self.grammar.parse('{"foo": "bar"}').transform(), {'foo': 'bar'})
 
     def test_array(self):
@@ -270,9 +271,9 @@ class CalculatorTest(unittest.TestCase):
         g = GrammarBuilder()
         g.number = Regexp(r'\d+') >= float
         g.atom = g.number | flatten('(' + g.expr + ')' >= itemgetter(0))
-        g.signed = Repeat(keep('+') | keep('-')) + g.atom >= signed
-        g.product_expr = +Repeat(g.signed, separator='*') >= product
-        g.expr = +Repeat(g.product_expr, separator='+') >= sum
+        g.signed = repeat(keep('+') | keep('-')) + g.atom >= signed
+        g.product_expr = +repeat(g.signed, separator='*') >= product
+        g.expr = +repeat(g.product_expr, separator='+') >= sum
         g.whitespace = builtins.horizontal_whitespace
         self.grammar = g(start=g.expr, tokenize=[ignore(g.whitespace)], drop_terminals=True)
 

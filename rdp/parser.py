@@ -56,11 +56,11 @@ class Parser(object):
 
     def backtrack(self, node):
         self.tokens.seek(node.offset)
-        
+
     @property
     def offset(self):
         return self.tokens.offset
-        
+
     def node(self, symbol, token=None, offset_diff=0):
         return Node(symbol, self.tokens.offset + offset_diff, token=token)
 

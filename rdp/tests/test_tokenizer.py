@@ -2,7 +2,7 @@ import unittest
 import textwrap
 import re
 
-from rdp import GrammarBuilder, flatten, drop, epsilon, Repeat, Terminal, Regexp, Parser, epsilon, Optional, ignore
+from rdp import GrammarBuilder, flatten, drop, epsilon, repeat, Terminal, Regexp, Parser, epsilon, Optional, ignore
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
 from rdp.indention import indent, INDENT, DEDENT
@@ -12,7 +12,7 @@ class TokenizerTest(unittest.TestCase):
     def test_indention_tokenizer(self):
         g = GrammarBuilder()
         g.whitespace = Regexp(r'\s+')
-        g.block = INDENT + Repeat(g.expr) + DEDENT
+        g.block = INDENT + repeat(g.expr) + DEDENT
         g.label = Regexp(r'\w+')
         g.expr = g.label + Optional(g.block) | g.label + '(' + g.expr + ')'
         grammar = g(

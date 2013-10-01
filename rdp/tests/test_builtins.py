@@ -1,6 +1,6 @@
 import unittest
 
-from rdp import (GrammarBuilder, flatten, drop, epsilon, Repeat, Terminal, Regexp, Parser)
+from rdp import (GrammarBuilder, flatten, drop, epsilon, Terminal, Regexp, Parser)
 from rdp import builtins
 
 

@@ -36,6 +36,12 @@ def keep(symbol):
     return symbol
 
 
+def group(symbol):
+    if isinstance(symbol, CompoundSymbol):
+        symbol.grouped = True
+    return symbol
+
+
 class Symbol(metaclass=abc.ABCMeta):
     def __init__(self, name=None):
         self.flatten = False
@@ -81,6 +87,9 @@ class Symbol(metaclass=abc.ABCMeta):
         clone.transform = chain(func, self.transform)
         return clone
 
+    def __pos__(self):
+        return NonEmpty(self)
+
     def iter(self):
         visited = set()
         next_symbols = deque([self])
@@ -121,6 +130,9 @@ class Terminal(Symbol):
             raise UnexpectedToken(token, self)
         yield parser.node(self, token, -1)
 
+    def __pos__(self):
+        return self
+
     def __repr__(self):
         name = '{0}='.format(self.name) if self.name else ''
         return '<{0} {1}{2}>'.format(
@@ -149,6 +161,10 @@ class Marker(Terminal):
     def pattern(self):
         return None
 
+    def __pos__(self):
+        raise InvalidGrammar('Marker symbols cannot be non-empty')
+
+
 
 class Epsilon(Marker):
     def __call__(self, parser):
@@ -168,6 +184,9 @@ class Regexp(Terminal):
     def pattern(self):
         return self.lexeme
 
+    def __pos__(self):
+        return self
+
 
 class CompoundSymbol(Symbol):
     repr_sep = ', '
@@ -175,6 +194,7 @@ class CompoundSymbol(Symbol):
     def __init__(self, symbols):
         super().__init__()
         self.symbols = symbols
+        self.grouped = False
 
     def __iter__(self):
         yield from self.symbols
@@ -209,6 +229,8 @@ class OneOf(CompoundSymbol):
         raise longest_match_error
 
     def __or__(self, other):
+        if self.grouped:
+            return super().__or__(other)
         return self.__class__(self.symbols + [to_symbol(other)])
 
     def apply_transform(self, node):
@@ -226,64 +248,58 @@ class Sequence(CompoundSymbol):
         yield node
 
     def __add__(self, other):
+        if self.grouped:
+            return super().__add__(other)
         return self.__class__(self.symbols + [to_symbol(other)])
 
 
 class Repeat(Symbol):
-    def __init__(self, symbol, separator=None, min=0, trailing=False, leading=False):
+    def __init__(self, symbol, min_matches=0):
         super().__init__()
         self.symbol = to_symbol(symbol)
-        self.separator = None if separator is None else to_symbol(separator)
-        assert not trailing or separator, "separator symbol required"
-        self.trailing = trailing
-        self.leading = leading
-        self.min = min
+        self.min_matches = min_matches
 
     def __iter__(self):
         yield self.symbol
-        if self.separator:
-            yield self.separator
 
     def __pos__(self):
+        if self.min_matches > 0:
+            return self
         clone = copy(self)
-        clone.min = 1
+        clone.min_matches = 1
         return clone
 
     def __call__(self, parser):
         node = parser.node(self)
-        last_sep = None
         n = 0
         while True:
             try:
                 child = yield self.symbol
-                if last_sep:
-                    node.append(last_sep)
-                    last_sep = None
                 n += 1
                 node.append(child)
             except ParseError:
-                if not self.separator:
-                    break
-                if node or last_sep is not None:
-                    if self.trailing and node and last_sep is not None:
-                        node.append(last_sep)
-                        break
-                    raise
-                if not self.leading:
-                    break
-
-            if self.separator:
-                try:
-                    last_sep = yield self.separator
-                except ParseError:
-                    break
-
-        if n < self.min:
+                break
+        if n < self.min_matches:
             raise ParseError("too few {0}".format(self.symbol))
         yield node
 
     def apply_transform(self, node):
         return self.transform([child.transform() for child in node])
+
+
+def repeat(symbol, separator=None, leading=False, trailing=False, min_matches=0):
+    if not separator:
+        return Repeat(symbol)
+    separator = to_symbol(separator)
+    tail = Repeat(flatten(separator + symbol), min_matches=max(min_matches - 1, 0))
+    r = group(symbol) + flatten(tail)
+    if leading:
+        r = Optional(separator) + flatten(r)
+    if trailing:
+        r = flatten(r) + Optional(separator)
+    if min_matches > 0:
+        return r
+    return flatten(r) | drop(epsilon)
 
 
 class SymbolWrapper(Symbol):
@@ -357,3 +373,13 @@ class Lookahead(SymbolWrapper):
         parser.backtrack(node)
         yield empty_match
 
+    def __pos__(self):
+        raise InvalidGrammar('Lookahead cannot be non-empty')
+
+
+class NonEmpty(SymbolWrapper):
+    def __call__(self, parser):
+        node = yield self.symbol
+        if not node:
+            raise ParseError('non-empty match expected')
+        yield node

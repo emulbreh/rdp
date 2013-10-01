@@ -1,7 +1,7 @@
 import unittest
 from operator import itemgetter
 
-from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, Repeat, Terminal,
+from rdp import (GrammarBuilder, Grammar, flatten, drop, epsilon, repeat, Terminal,
     Regexp, Parser, LeftRecursion, ParseError, Optional, Lookahead, ignore, keep)
 from rdp.formatter import GrammarFormatter
 from rdp import builtins
