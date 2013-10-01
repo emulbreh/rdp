@@ -29,13 +29,11 @@ class GrammarFormatter:
         return '({0})?'.format(self.format_symbol(optional.symbol))
 
     def format_repeat(self, repeat):
-        if repeat.separator:
-            return '[{0} *({0} {1})]'.format(
-                self.format_symbol(repeat.symbol),
-                self.format_symbol(repeat.separator),
-            )
-        else:
-            return '*({0})'.format(self.format_symbol(repeat.symbol))
+        if repeat.min_matches == 0:
+            return '{{{0}}}'.format(self.format_symbol(repeat.symbol))
+        elif repeat.min == 1:
+            return '[{0}]'.format(self.format_symbol(repeat.symbol))
+        raise TypeError()
 
     def format_oneof(self, oneof):
         return ' / '.join(self.format_symbol(s) for s in oneof.symbols)
